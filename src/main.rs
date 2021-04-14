@@ -25,7 +25,7 @@ fn main() {
         //.add_plugin(RapierRenderPlugin)
         .add_startup_system(setup_physics.system())
         .add_system(move_paddle.system())
-        .add_system(handle_physics_event.system())
+        .add_system(handle_collision_event.system())
         .run();
 }
 
@@ -163,7 +163,7 @@ fn handle_collision_event(mut commands : Commands, event : Res<EventQueue>, mut 
     }
 }
 
-//will 
+//will
 fn handle_ball_velocity(){
 
 }
