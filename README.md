@@ -20,4 +20,3 @@ Full path : https://www.dafont.com/blocks-rf.font
 
 =======
 ![title](https://github.com/KDahir247/block-breaker-rust/blob/main/image/pic02.png)
->>>>>>> 38945bf53243532209800699f81d9f120d99aed6
