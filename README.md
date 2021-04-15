@@ -1,9 +1,6 @@
 # block-breaker-rust
 playing around with bevy (data driven, parallel, cache friendly, ECS game engine) with rapier (handle collision). Created a small replica of a simplified block breaker using rust. Currently, not finished
 <br/>
-<<<<<<< HEAD
-![title](https://github.com/KDahir247/block-breaker-rust/blob/main/image/pic01.png)
-<br/>
 # Attributions
 
 ## Block Sound Sfx
@@ -23,4 +20,3 @@ Full path : https://www.dafont.com/blocks-rf.font
 
 =======
 ![title](https://github.com/KDahir247/block-breaker-rust/blob/main/image/pic02.png)
->>>>>>> 38945bf53243532209800699f81d9f120d99aed6
