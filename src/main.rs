@@ -2,30 +2,50 @@ use bevy::prelude::*;
 use bevy::winit::*;
 use bevy_rapier2d::physics::*;
 use bevy_rapier2d::rapier::dynamics::*;
-use bevy_rapier2d::rapier::geometry::{ColliderBuilder, ColliderHandle, ContactEvent, ColliderSet};
+use bevy_rapier2d::rapier::geometry::{ColliderBuilder, ColliderHandle, ContactEvent};
 use bevy_rapier2d::rapier::parry::na::Isometry2;
 use rapier2d::parry::na::clamp;
 use rand::{Rng, thread_rng};
+use bevy::audio::AudioPlugin;
 
+//physics
 pub struct Paddle(i8);
 pub  struct Brick(i8);
+pub  struct Ball;
+
+pub struct BallHitEvent;
+
+//game window
+pub const GAME_WIDTH: f32 = 800.;
+pub const GAME_HEIGHT: f32 = 650.;
+
+pub struct GameWindow(f32, f32);
+
+//ui
+pub struct Score(usize);
+
 
 fn main() {
     App::build()
         .insert_resource(WindowDescriptor{
             title : "BlockSmash".to_string(),
-            width : 800.,
-            height : 650.,
+            width : GAME_WIDTH,
+            height : GAME_HEIGHT,
             resizable : false,
             ..Default::default()
         })
+        .insert_resource(GameWindow(GAME_WIDTH, GAME_HEIGHT))
+        .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
+        .add_event::<BallHitEvent>()
         .add_plugins(DefaultPlugins)
         .add_plugin(WinitPlugin::default())
         .add_plugin(RapierPhysicsPlugin)
-        //.add_plugin(RapierRenderPlugin)
         .add_startup_system(setup_physics.system())
+        .add_startup_system(setup_text.system())
         .add_system(move_paddle.system())
         .add_system(handle_collision_event.system())
+        .add_system(play_hit_audio.system())
+        .add_system(update_score.system())
         .run();
 }
 
@@ -45,7 +65,7 @@ fn setup_physics(mut commands:  Commands, asset_server : Res<AssetServer>, mut m
         .friction(0.);
 
     commands.spawn_bundle(SpriteBundle{
-        material : material.add(asset_server.load("paddle.png").into()),
+        material : material.add(asset_server.load("sprite/paddle.png").into()),
         ..Default::default()
     }).
         insert_bundle((paddle_rigidbody, paddle_collider))
@@ -58,9 +78,10 @@ fn setup_physics(mut commands:  Commands, asset_server : Res<AssetServer>, mut m
         .linvel(rand_linear_x,rand_linear_y);
 
     //Pixel size for sprite should be 20 pixel to 20 pixel
-    let collider2 = ColliderBuilder::ball(10.).friction(0.).restitution(2.0);
-    commands.spawn_bundle(SpriteBundle{ material : material.add(asset_server.load("ball.png").into()), ..Default::default()})
-        .insert_bundle((rigid_body2, collider2));
+    let collider2 = ColliderBuilder::ball(10.).friction(0.).restitution(2.01);
+    commands.spawn_bundle(SpriteBundle{ material : material.add(asset_server.load("sprite/ball.png").into()), ..Default::default()})
+        .insert_bundle((rigid_body2, collider2))
+        .insert(Ball);
 
     //Top Wall
     let top_rigidbody = RigidBodyBuilder::new_static()
@@ -69,7 +90,7 @@ fn setup_physics(mut commands:  Commands, asset_server : Res<AssetServer>, mut m
     let top_collider = ColliderBuilder::cuboid(400., 35.)
         .friction(0.);
 
-    commands.spawn_bundle(SpriteBundle{material : material.add(asset_server.load("horizontal_boundary.png").into()), ..Default::default()})
+    commands.spawn_bundle(SpriteBundle{material : material.add(asset_server.load("sprite/horizontal_boundary.png").into()), ..Default::default()})
         .insert_bundle((top_rigidbody, top_collider));
 
     //Left Wall
@@ -80,7 +101,7 @@ fn setup_physics(mut commands:  Commands, asset_server : Res<AssetServer>, mut m
     let lhs_collider = ColliderBuilder::cuboid(35.,400.)
         .friction(0.);
 
-    commands.spawn_bundle(SpriteBundle{material : material.add(asset_server.load("vertical_boundary.png").into()), ..Default::default()})
+    commands.spawn_bundle(SpriteBundle{material : material.add(asset_server.load("sprite/vertical_boundary.png").into()), ..Default::default()})
         .insert_bundle((lhs_rigidbody, lhs_collider));
 
 
@@ -93,22 +114,10 @@ fn setup_physics(mut commands:  Commands, asset_server : Res<AssetServer>, mut m
         .friction(0.);
 
     commands
-        .spawn_bundle(SpriteBundle{material : material.add(asset_server.load("vertical_boundary.png").into()), ..Default::default()})
+        .spawn_bundle(SpriteBundle{material : material.add(asset_server.load("sprite/vertical_boundary.png").into()), ..Default::default()})
         .insert_bundle((rhs_rigidbody, rhs_collider));
 
     spawn_bricks(commands, Vec2::new(3.,2.), Vec2::new(100.,65.), asset_server, material);
-}
-
-fn move_paddle(key_board : Res<Input<KeyCode>>, mut rigid_bodies : ResMut<RigidBodySet>, mut physics_query : Query<(&mut Transform, &Paddle, &RigidBodyHandleComponent)>){
-    for (mut transform, paddle, rigidbody_component) in physics_query.iter_mut() {
-        let x_axis = (-(key_board.pressed(KeyCode::A) as i8) + (key_board.pressed(KeyCode::D) as i8)) * paddle.0;
-
-        if let Some(rb) = rigid_bodies.get_mut(rigidbody_component.handle()){
-            if x_axis != 0 {
-                rb.set_next_kinematic_position(Isometry2::translation(clamp(transform.translation.x + x_axis as f32, -335.,335.), -300.0));
-            }
-        }
-    }
 }
 
 
@@ -116,7 +125,7 @@ fn spawn_bricks(mut commands : Commands, row_col : Vec2, padding : Vec2, asset_s
     for column in (-row_col.y as i8)..=row_col.y as i8 {
         for row in (-row_col.x as i8)..=row_col.x as i8 {
 
-            let texture_handle = asset_server.load("brick.png");
+            let texture_handle = asset_server.load("sprite/brick.png");
 
             let brick_rigidbody = RigidBodyBuilder::new_kinematic()
                 .translation(row as f32 * padding.x , column as f32 * padding.y + 50.);
@@ -136,7 +145,53 @@ fn spawn_bricks(mut commands : Commands, row_col : Vec2, padding : Vec2, asset_s
 }
 
 
-fn handle_collision_event(mut commands : Commands, event : Res<EventQueue>, mut destroyable_query : Query<(Entity, &ColliderHandleComponent,  &mut Brick)>){
+fn setup_text(mut commands: Commands, asset_server : Res<AssetServer>, window_data : Res<GameWindow>){
+
+    commands.spawn_bundle(UiCameraBundle::default());
+    commands
+        .spawn_bundle(TextBundle{
+            style : Style{
+                align_self : AlignSelf::FlexStart,
+                position_type : PositionType::Relative,
+                position : Rect{
+                    bottom : Val::Px(window_data.1 - 20.),
+                    left : Val::Px(35.0),
+                    ..Default::default()
+                } ,
+                ..Default::default()
+            },
+            text : Text::with_section("Score: 0", TextStyle{
+                font : asset_server.load("font/blocks.ttf"),
+                font_size : 20.,
+                color: Color::BLACK
+            }, TextAlignment{
+                horizontal : HorizontalAlign::Center,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .insert(Score(0));
+}
+
+
+fn move_paddle(key_board : Res<Input<KeyCode>>, mut rigid_bodies : ResMut<RigidBodySet>, mut physics_query : Query<(&mut Transform, &Paddle, &RigidBodyHandleComponent)>){
+    for (mut transform, paddle, rigidbody_component) in physics_query.iter_mut() {
+        let x_axis = (-(key_board.pressed(KeyCode::A) as i8) + (key_board.pressed(KeyCode::D) as i8)) * paddle.0;
+
+        if let Some(rb) = rigid_bodies.get_mut(rigidbody_component.handle()){
+            if x_axis != 0 {
+                rb.set_next_kinematic_position(Isometry2::translation(clamp(transform.translation.x + x_axis as f32, -335.,335.), -300.0));
+            }
+        }
+    }
+}
+
+
+fn handle_collision_event(mut commands : Commands,
+                          mut event_writer : EventWriter<BallHitEvent>,
+                          event : Res<EventQueue>,
+                          mut destroyable_query : Query<(Entity, &ColliderHandleComponent,  &mut Brick)>){
+
     while let Ok(evt) = event.contact_events.pop(){
 
         let mut collider_pair : (ColliderHandle, ColliderHandle) = (ColliderHandle::invalid(), ColliderHandle::invalid());
@@ -153,6 +208,9 @@ fn handle_collision_event(mut commands : Commands, event : Res<EventQueue>, mut 
             }
 
             if collider.handle().eq(&collider_pair.1) {
+
+                event_writer.send(BallHitEvent);
+
                 brick.0 -= 1;
 
                 if brick.0 <= 0 {
@@ -163,7 +221,31 @@ fn handle_collision_event(mut commands : Commands, event : Res<EventQueue>, mut 
     }
 }
 
-//will
-fn handle_ball_velocity(){
+pub fn update_score(mut event_reader : EventReader<BallHitEvent>, mut text_query : Query<(&mut Text,&mut Score)>){
+
+    if event_reader.iter().next().is_some(){
+        for (mut text, mut score) in text_query.iter_mut() {
+
+            score.0 = score.0 + 1;
+            text.sections[0].value = format!("Score: {:?}", score.0);
+
+        }
+    }
+
+}
+
+
+
+//TODO next task is to play audio when the ball hit a brick.
+//TODO might play a separate audio for when it hits the paddle.
+pub fn play_hit_audio(mut event_reader : EventReader<BallHitEvent>,
+                      asset_server : Res<AssetServer>,
+                      audioRes : Res<Audio>){
+
+    if event_reader.iter().next().is_some() {
+
+        let audio_clip = asset_server.load("audio/hit.mp3");
+        audioRes.play(audio_clip);
+    }
 
 }
